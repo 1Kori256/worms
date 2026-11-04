@@ -1,88 +1,44 @@
-"""
+"""Draw the original worm sprites. Game rules live in game_instance.py."""
 
-"""
+from functools import lru_cache
+from pathlib import Path
+import pygame
+
+IMAGE_DIR = Path(__file__).resolve().parent.parent / "data" / "images"
+SPRITES = (
+    "head_up", "head_down", "head_right", "head_left",
+    "tail_up", "tail_down", "tail_right", "tail_left",
+    "body_vertical", "body_horizontal", "body_tr", "body_tl", "body_br", "body_bl",
+)
 
 
-import pygame, random
-
-
-def scale_image(img):
-    return pygame.transform.scale(img, (32, 32))
+@lru_cache(maxsize=64)
+def load_sprite(name, size):
+    image = pygame.image.load(str(IMAGE_DIR / f"{name}.png")).convert_alpha()
+    return pygame.transform.scale(image, (size, size))
 
 
 class Block:
-    def __init__(self, x, y) -> None:
+    def __init__(self, x, y):
         self.x = x
         self.y = y
 
-    def __eq__(self, other) -> bool:
-        if self.x == other.x and self.y == other.y: return True
-        return False
+    def __eq__(self, other):
+        if not isinstance(other, Block):
+            return NotImplemented
+        return self.x == other.x and self.y == other.y
 
     def __sub__(self, other):
         return Block(self.x - other.x, self.y - other.y)
 
-    def __add__(self, other):
-        return Block(self.x + other.x, self.y + other.y)
 
 class Worm:
-    def __init__(self, player_id, size, pos, from_array = None) -> None:
+    def __init__(self, player_id, size, pos):
         self.player_id = player_id
         self.size = size
         self.body = [Block(*pos), Block(pos[0] - 1, pos[1]), Block(pos[0] - 2, pos[1])]
-        if from_array:
-            self.body = [Block(*block) for block in from_array]
-        self.direction = Block(1, 0)
-        self.new_block = False
-
-        self.head_up = scale_image(pygame.image.load('data/images/head_up.png').convert_alpha())
-        self.head_down = scale_image(pygame.image.load('data/images/head_down.png').convert_alpha())
-        self.head_right = scale_image(pygame.image.load('data/images/head_right.png').convert_alpha())
-        self.head_left = scale_image(pygame.image.load('data/images/head_left.png').convert_alpha())
-		
-        self.tail_up = scale_image(pygame.image.load('data/images/tail_up.png').convert_alpha())
-        self.tail_down = scale_image(pygame.image.load('data/images/tail_down.png').convert_alpha())
-        self.tail_right = scale_image(pygame.image.load('data/images/tail_right.png').convert_alpha())
-        self.tail_left = scale_image(pygame.image.load('data/images/tail_left.png').convert_alpha())
-
-        self.body_vertical = scale_image(pygame.image.load('data/images/body_vertical.png').convert_alpha())
-        self.body_horizontal = scale_image(pygame.image.load('data/images/body_horizontal.png').convert_alpha())
-
-        self.body_tr = scale_image(pygame.image.load('data/images/body_tr.png').convert_alpha())
-        self.body_tl = scale_image(pygame.image.load('data/images/body_tl.png').convert_alpha())
-        self.body_br = scale_image(pygame.image.load('data/images/body_br.png').convert_alpha())
-        self.body_bl = scale_image(pygame.image.load('data/images/body_bl.png').convert_alpha())
-
-        self.ate = False
-        self.dead = False
-
-    def update(self, food, other_worms) -> None:
-        if food.pos == self.body[0]:
-            self.new_block = True
-            self.ate = True
-
-        if self.new_block == True:
-            body_copy = self.body[:]
-            body_copy.insert(0, body_copy[0] + self.direction)
-            self.body = body_copy[:]
-            self.new_block = False
-        else:
-            body_copy = self.body[:-1]
-            body_copy.insert(0, body_copy[0] + self.direction)
-            self.body = body_copy[:]
-
-        if self.body[0].x >= 30 or self.body[0].x < 0 or self.body[0].y >= 30 or self.body[0].y < 0:
-            self.die()
-
-        for worm in other_worms:
-            for part in worm.body:
-                if self.body[0] == part:
-                    self.die()
-
-    def die(self):
-        self.dead = True
-        pos = (100000, 0)
-        self.body = [Block(*pos), Block(pos[0] - 1, pos[1]), Block(pos[0] - 2, pos[1])]
+        for name in SPRITES:
+            setattr(self, name, load_sprite(name, size))
 
     def update_head_image(self):
         head_relation = self.body[1] - self.body[0]
@@ -99,6 +55,8 @@ class Worm:
         elif tail_relation == Block(0,-1): self.tail = self.tail_down
 
     def draw(self, surface) -> None:
+        if len(self.body) < 2:
+            return
         self.update_head_image()
         self.update_tail_image()
 
@@ -127,29 +85,14 @@ class Worm:
                         surface.blit(self.body_tr, block_rect)
                     elif previous_block.x == 1 and next_block.y == 1 or previous_block.y == 1 and next_block.x == 1:
                         surface.blit(self.body_br, block_rect)
-    
-    def get_worm(self):
-        return ";".join([f"{block.x}_{block.y}" for block in self.body])
 
-
-    def set_worm(self, body_str):
-        self.body = [Block(int(x), int(y)) for x, y in [block.split("_") for block in body_str.split(";")]]
-
-    def to_array(self):
-        return [(block.x, block.y) for block in self.body]
-
-    def to_string(self):
-        return ";".join(f"{block.x}_{block.y}" for block in self.body)
 
 class Food:
-    def __init__(self, size) -> None:
+    def __init__(self, size):
         self.size = size
-        self.generate_pos()
-        self.image = scale_image(pygame.image.load('data/images/apple.png').convert_alpha())
+        self.pos = None
+        self.image = load_sprite("apple", size)
 
-    def draw(self, surface) -> None:
-        fruit_rect = pygame.Rect(int(self.pos.x * self.size), int(self.pos.y * self.size), self.size, self.size)
-        surface.blit(self.image, fruit_rect)
-
-    def generate_pos(self) -> None:
-        self.pos = Block(random.randint(0, 30), random.randint(0, 30))
+    def draw(self, surface):
+        if self.pos is not None:
+            surface.blit(self.image, (self.pos.x * self.size, self.pos.y * self.size))

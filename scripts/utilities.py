@@ -1,50 +1,21 @@
-"""
-Useful function for the app
-"""
-
-
+from functools import lru_cache
 import json
-import os
-import pygame
+from pathlib import Path
 
 
-def load_config(path) -> dict:
-    
-    """Load all configs
-    
-    Keyword argument:
-    path - path to config folder
-     
-    Returns:
-    dict: dict of all configs
-    """
-    
+def load_config(path):
     config = {}
-    config_paths = os.listdir(path)
-    
-    for current_path in config_paths:
-        if current_path[-12:] == "_config.json":
-            with open(f"{path}/{current_path}") as file:
-                current_config = json.load(file)
-            config[current_path[:-12]] = current_config
-        
+    for file in sorted(Path(path).glob("*_config.json")):
+        with file.open(encoding="utf-8") as source:
+            config[file.name[:-12]] = json.load(source)
     return config
-    
 
-def debug(surface, font, pos, *args) -> None:
-    
-    """Function that displays certain values, used for debugging purposes.
-    
-    Keyword arguments:
-    surface - surface to blit debug values
-    font - font to use to blit debug values
-    pos - position of debug tab
-    *args - values to show in debugging menu
-    """
-    
-    debug_surface = pygame.Surface((100, 8 + 16 * (len(args) - 1)))
-    debug_surface.set_colorkey((0, 0, 0))
+
+@lru_cache(maxsize=128)
+def debug_text(font, text):
+    return font.render(text, True, (240, 240, 240))
+
+
+def debug(surface, font, pos, *args):
     for i, arg in enumerate(args):
-        text_object = font.render(f"{arg}", True, (240,240,240))
-        debug_surface.blit(text_object, (0, i * 16))
-    surface.blit(debug_surface, pos)
+        surface.blit(debug_text(font, str(arg)), (pos[0], pos[1] + i * 16))
