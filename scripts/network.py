@@ -1,33 +1,23 @@
 import socket
-import pickle
+from types import SimpleNamespace
+
+from .protocol import receive_message, send_message
 
 
 class Network:
-    def __init__(self, app, ip = None):
-        self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        if ip is None:
-            self.server = app.config["server"]["ip"]
-        else:
-            self.server = ip
-        self.port = 5555
-        self.addr = (self.server, self.port)
-        self.player = self.connect()
-
-    def get_player(self):
-        return self.player
-
-    def connect(self):
+    def __init__(self, app, ip=None, port=5555):
+        server = ip or app.config["server"]["ip"]
+        self.client = socket.create_connection((server, port), timeout=5)
         try:
-            self.client.connect(self.addr)
-            return self.client.recv(8192).decode()
-        except:
-            pass
+            self.client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.player = receive_message(self.client)["player"]
+        except Exception:
+            self.close()
+            raise
 
-    def send(self, data):
-        try:
-            self.client.send(str.encode(data))
-            data = self.client.recv(8192)
-            return pickle.loads(data)
+    def send(self, direction=None, ready=False):
+        send_message(self.client, {"type": "input", "direction": direction, "ready": ready})
+        return SimpleNamespace(**receive_message(self.client))
 
-        except socket.error as e:
-            print(e)
+    def close(self):
+        self.client.close()
